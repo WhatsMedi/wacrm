@@ -75,6 +75,126 @@ BEGIN
       'messages.error_code/error_title/error_details are missing â€” migration 042 did not apply';
   END IF;
 
+  -- ============================================================
+  -- WhatsMedi Identity Foundation (043)
+  -- ============================================================
+
+  -- Tables
+  IF to_regclass('public.whatsmedi_persons') IS NULL THEN
+    RAISE EXCEPTION
+      'whatsmedi_persons is missing — migration 043 did not apply';
+  END IF;
+
+  IF to_regclass('public.whatsmedi_whatsapp_identities') IS NULL THEN
+    RAISE EXCEPTION
+      'whatsmedi_whatsapp_identities is missing — migration 043 did not apply';
+  END IF;
+
+  IF to_regclass('public.whatsmedi_wacrm_contact_mappings') IS NULL THEN
+    RAISE EXCEPTION
+      'whatsmedi_wacrm_contact_mappings is missing — migration 043 did not apply';
+  END IF;
+
+  -- Enums
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type
+    WHERE typnamespace = 'public'::regnamespace
+      AND typname = 'whatsmedi_identity_status'
+  ) THEN
+    RAISE EXCEPTION
+      'whatsmedi_identity_status enum is missing — migration 043 did not apply';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type
+    WHERE typnamespace = 'public'::regnamespace
+      AND typname = 'whatsmedi_identity_source'
+  ) THEN
+    RAISE EXCEPTION
+      'whatsmedi_identity_source enum is missing — migration 043 did not apply';
+  END IF;
+
+  -- Critical indexes
+  IF to_regclass('public.idx_whatsmedi_identity_account_wa_user_id') IS NULL THEN
+    RAISE EXCEPTION
+      'WhatsMedi BSUID uniqueness index is missing — migration 043 did not apply';
+  END IF;
+
+  IF to_regclass('public.idx_whatsmedi_identity_account_phone') IS NULL THEN
+    RAISE EXCEPTION
+      'WhatsMedi phone uniqueness index is missing — migration 043 did not apply';
+  END IF;
+
+  IF to_regclass('public.idx_whatsmedi_mapping_account_wacrm_contact') IS NULL THEN
+    RAISE EXCEPTION
+      'WhatsMedi WACRM mapping uniqueness index is missing — migration 043 did not apply';
+  END IF;
+
+  IF to_regclass('public.idx_whatsmedi_mapping_account_identity') IS NULL THEN
+    RAISE EXCEPTION
+      'WhatsMedi identity mapping uniqueness index is missing — migration 043 did not apply';
+  END IF;
+
+  -- Critical account-consistency constraints
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_whatsmedi_mapping_account_contact'
+  ) THEN
+    RAISE EXCEPTION
+      'WhatsMedi account/contact foreign key is missing — migration 043 did not apply';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_whatsmedi_mapping_account_identity'
+  ) THEN
+    RAISE EXCEPTION
+      'WhatsMedi account/identity foreign key is missing — migration 043 did not apply';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_whatsmedi_mapping_identity_person'
+  ) THEN
+    RAISE EXCEPTION
+      'WhatsMedi identity/person foreign key is missing — migration 043 did not apply';
+  END IF;
+
+  -- RLS must be enabled on every WhatsMedi identity table.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class
+    WHERE oid = 'public.whatsmedi_persons'::regclass
+      AND relrowsecurity = true
+  ) THEN
+    RAISE EXCEPTION
+      'RLS is not enabled on whatsmedi_persons — migration 043 did not apply';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class
+    WHERE oid = 'public.whatsmedi_whatsapp_identities'::regclass
+      AND relrowsecurity = true
+  ) THEN
+    RAISE EXCEPTION
+      'RLS is not enabled on whatsmedi_whatsapp_identities — migration 043 did not apply';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class
+    WHERE oid = 'public.whatsmedi_wacrm_contact_mappings'::regclass
+      AND relrowsecurity = true
+  ) THEN
+    RAISE EXCEPTION
+      'RLS is not enabled on whatsmedi_wacrm_contact_mappings — migration 043 did not apply';
+  END IF;
   RAISE NOTICE 'schema verification passed';
 END
 $$;
