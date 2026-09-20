@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { AgentDefinition, AgentRequest } from './types'
 import type { PersonId } from '../identity/types'
 import { InMemoryAgentRegistry } from './registry'
@@ -43,6 +43,16 @@ const createRuntime = (agent?: AgentDefinition) => {
 
   const auditSink = new InMemoryAgentAuditSink()
 
+  const healthContextService = {
+    getContext: async () => ({
+      accountId: 'account-1',
+      personId: 'person-1' as PersonId,
+      generatedAt: '2026-09-20T13:00:00.000Z',
+      purpose: 'clinical_conversation' as const,
+      items: [],
+    }),
+  }
+
   let call = 0
   const timestamps = [
     '2026-09-20T13:00:00.000Z',
@@ -53,6 +63,7 @@ const createRuntime = (agent?: AgentDefinition) => {
     registry,
     new AgentCapabilityGate(),
     auditSink,
+    healthContextService,
     () => timestamps[call++] ?? timestamps[timestamps.length - 1],
   )
 

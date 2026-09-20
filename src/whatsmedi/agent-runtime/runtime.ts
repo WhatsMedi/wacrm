@@ -1,16 +1,27 @@
-﻿import type {
+import type { HealthContext } from '../health-context/types'
+import type {
   AgentRequest,
   AgentResult,
 } from './types'
 import type { AgentRegistry } from './registry'
 import { AgentCapabilityGate } from './capability-gate'
 import type { AgentAuditSink } from './audit'
+interface HealthContextReader {
+  getContext(request: {
+    accountId: string
+    personId: string
+    purpose: AgentRequest['purpose']
+    actorType: AgentRequest['actorType']
+    actorId: string | null
+  }): Promise<HealthContext>
+}
 
 export class AgentRuntime {
   constructor(
     private readonly registry: AgentRegistry,
     private readonly capabilityGate: AgentCapabilityGate,
     private readonly auditSink: AgentAuditSink,
+    private readonly healthContextService: HealthContextReader,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {}
 
@@ -87,6 +98,35 @@ export class AgentRuntime {
       )
     }
 
+    if (request.requestedCapability === 'health_context.read') {
+      try {
+        await this.healthContextService.getContext({
+          accountId: request.accountId,
+          personId: request.personId,
+          purpose: request.purpose,
+          actorType: request.actorType,
+          actorId: request.actorId,
+        })
+      } catch (error) {
+        return this.finish(
+          request,
+          {
+            status: 'blocked',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Health context access was blocked',
+            correlationId: request.correlationId,
+            agentId: agent.id,
+            startedAt,
+            completedAt: this.now(),
+            actions: [],
+          },
+          agent,
+        )
+      }
+    }
+
     return this.finish(
       request,
       {
@@ -105,7 +145,7 @@ export class AgentRuntime {
   private async finish(
     request: AgentRequest,
     result: AgentResult,
-    agent: AgentResult extends never ? never : { version: string } | null,
+    agent: { version: string } | null,
   ): Promise<AgentResult> {
     await this.auditSink.record({
       metadata: {
