@@ -1,6 +1,7 @@
-﻿import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { PersonId } from '../identity/types'
 import type { HealthContextRepository } from './repository'
+import type { HealthContextAuthorization } from './authorization'
 import type {
   HealthContextActorType,
   HealthContextItem,
@@ -139,6 +140,47 @@ export class SupabaseHealthContextRepository
     return data.status === 'active' ? 'active' : 'inactive'
   }
 
+  async getAuthorization(
+    accountId: string,
+    personId: PersonId,
+    actorType: HealthContextActorType,
+    actorId: string,
+    purpose: HealthContextPurpose,
+  ): Promise<HealthContextAuthorization | null> {
+    const { data, error } = await this.supabase
+      .from('whatsmedi_person_authorizations')
+      .select(
+        'account_id,person_id,actor_type,actor_id,purpose,relationship,status,expires_at',
+      )
+      .eq('account_id', accountId)
+      .eq('person_id', personId)
+      .eq('actor_type', actorType)
+      .eq('actor_id', actorId)
+      .eq('purpose', purpose)
+      .maybeSingle()
+
+    if (error) {
+      throw new SupabaseHealthContextRepositoryError(
+        'finding person authorization',
+        error,
+      )
+    }
+
+    if (!data) {
+      return null
+    }
+
+    return {
+      accountId: data.account_id,
+      personId: data.person_id as PersonId,
+      actorType: data.actor_type as HealthContextActorType,
+      actorId: data.actor_id,
+      purpose: data.purpose as HealthContextPurpose,
+      relationship: data.relationship,
+      status: data.status as HealthContextAuthorization['status'],
+      expiresAt: data.expires_at,
+    }
+  }
   async getHealthContextItems(
     accountId: string,
     personId: PersonId,

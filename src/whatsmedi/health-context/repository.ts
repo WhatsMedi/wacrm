@@ -5,8 +5,10 @@ import type {
   HealthContextPurpose,
 } from './types'
 import type { HealthContextDomain } from './access-policy'
+import type { HealthContextAuthorizationRepository } from './authorization'
 
-export interface HealthContextRepository {
+export interface HealthContextRepository
+  extends HealthContextAuthorizationRepository {
   getPersonAccountMembership(
     accountId: string,
     personId: PersonId,

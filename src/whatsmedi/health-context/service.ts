@@ -1,4 +1,5 @@
-﻿import type { HealthContextRepository } from './repository'
+import type { HealthContextAuthorizationPolicy } from './authorization-policy'
+import type { HealthContextRepository } from './repository'
 import {
   HealthContextAccessPolicy,
   type HealthContextAccessRequest,
@@ -15,7 +16,8 @@ export class HealthContextAccessError extends Error {
 export class HealthContextService {
   constructor(
     private readonly repository: HealthContextRepository,
-    private readonly accessPolicy = new HealthContextAccessPolicy(),
+    private readonly accessPolicy: HealthContextAccessPolicy,
+    private readonly authorizationPolicy: HealthContextAuthorizationPolicy,
   ) {}
 
   async getContext(
@@ -36,6 +38,20 @@ export class HealthContextService {
     if (membership !== 'active') {
       throw new HealthContextAccessError(
         'Person account membership is not active.',
+      )
+    }
+
+    const authorized = await this.authorizationPolicy.isAuthorized({
+      accountId: request.accountId,
+      personId: request.personId,
+      actorType: request.actorType,
+      actorId: request.actorId,
+      purpose: request.purpose,
+    })
+
+    if (!authorized) {
+      throw new HealthContextAccessError(
+        'Actor is not authorized to access this person health context for the requested purpose.',
       )
     }
 

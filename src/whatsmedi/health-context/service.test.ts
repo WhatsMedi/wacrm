@@ -1,111 +1,151 @@
-﻿import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { PersonId } from '../identity/types'
+import { HealthContextAuthorizationPolicy } from './authorization-policy'
+import { HealthContextAccessPolicy } from './access-policy'
+import { HealthContextAccessError, HealthContextService } from './service'
 import type { HealthContextRepository } from './repository'
-import {
-  HealthContextAccessError,
-  HealthContextService,
-} from './service'
-
-const personId = 'person-1' as PersonId
-
-function createRepository(
-  membership: 'active' | 'inactive' | null,
-) {
-  return {
-    getPersonAccountMembership: vi.fn(async () => membership),
-
-    getHealthContextItems: vi.fn(async (
-      _accountId: string,
-      _personId: PersonId,
-      _purpose: Parameters<
-        HealthContextRepository['getHealthContextItems']
-      >[2],
-      _actorType: Parameters<
-        HealthContextRepository['getHealthContextItems']
-      >[3],
-      _allowedDomains: Parameters<
-        HealthContextRepository['getHealthContextItems']
-      >[4],
-    ) => [
-      {
-        domain: 'condition' as const,
-        id: 'condition-1',
-        displayText: 'Diabetes',
-        verificationStatus: 'verified' as const,
-        source: 'provider_entered' as const,
-        sourceReference: 'provider-1',
-        recordedAt: '2026-09-19T00:00:00.000Z',
-        effectiveAt: null,
-      },
-    ]),
-  } satisfies HealthContextRepository
-}
 
 describe('HealthContextService', () => {
-  it('returns health context for an active person-account membership', async () => {
-    const repository = createRepository('active')
-    const service = new HealthContextService(repository)
+  const accountId = 'account-1'
+  const personId = 'person-1' as PersonId
+
+  function createRepository() {
+    return {
+      getAuthorization: vi.fn(async () => null),
+      getPersonAccountMembership: vi.fn(
+        async (): Promise<'active' | 'inactive' | null> => 'active',
+      ),
+      getHealthContextItems: vi.fn(async () => []),
+    } satisfies HealthContextRepository
+  }
+
+  function createAuthorizationPolicy(
+    authorized = true,
+  ) {
+    return {
+      isAuthorized: vi.fn(async () => authorized),
+    } as unknown as HealthContextAuthorizationPolicy
+  }
+
+  function createService(
+    repository: ReturnType<typeof createRepository>,
+    authorized = true,
+  ) {
+    return new HealthContextService(
+      repository,
+      new HealthContextAccessPolicy(),
+      createAuthorizationPolicy(authorized),
+    )
+  }
+
+  it('returns scoped health context for an authorized request', async () => {
+    const repository = createRepository()
+    const authorizationPolicy = createAuthorizationPolicy(true)
+
+    const service = new HealthContextService(
+      repository,
+      new HealthContextAccessPolicy(),
+      authorizationPolicy,
+    )
 
     const result = await service.getContext({
-      accountId: 'account-1',
+      accountId,
       personId,
       purpose: 'clinical_conversation',
-      actorType: 'agent',
-      actorId: 'agent-1',
+      actorType: 'patient',
+      actorId: personId,
     })
 
-    expect(result.accountId).toBe('account-1')
+    expect(result.accountId).toBe(accountId)
     expect(result.personId).toBe(personId)
-    expect(result.items).toHaveLength(1)
-    expect(result.items[0].displayText).toBe('Diabetes')
+    expect(result.purpose).toBe('clinical_conversation')
 
-    expect(repository.getHealthContextItems).toHaveBeenCalledWith(
-      'account-1',
+    expect(authorizationPolicy.isAuthorized).toHaveBeenCalledWith({
+      accountId,
       personId,
-      'clinical_conversation',
-      'agent',
-      [
-        'condition',
-        'medication',
-        'allergy',
-        'observation',
-        'encounter',
-        'document',
-        'event',
-      ],
-    )
+      actorType: 'patient',
+      actorId: personId,
+      purpose: 'clinical_conversation',
+    })
+
+    expect(repository.getHealthContextItems).toHaveBeenCalledTimes(1)
   })
 
   it('rejects a person who is not a member of the account', async () => {
-    const repository = createRepository(null)
-    const service = new HealthContextService(repository)
+    const repository = createRepository()
+
+    repository.getPersonAccountMembership.mockResolvedValue(null)
+
+    const service = createService(repository)
 
     await expect(
       service.getContext({
-        accountId: 'account-1',
+        accountId,
         personId,
         purpose: 'clinical_conversation',
-        actorType: 'agent',
-        actorId: 'agent-1',
+        actorType: 'patient',
+        actorId: personId,
       }),
-    ).rejects.toThrow(HealthContextAccessError)
+    ).rejects.toThrow(
+      'Person is not a member of the requested account.',
+    )
 
     expect(repository.getHealthContextItems).not.toHaveBeenCalled()
   })
 
   it('rejects inactive person-account membership', async () => {
-    const repository = createRepository('inactive')
-    const service = new HealthContextService(repository)
+    const repository = createRepository()
+
+    repository.getPersonAccountMembership.mockResolvedValue(
+      'inactive',
+    )
+
+    const service = createService(repository)
 
     await expect(
       service.getContext({
-        accountId: 'account-1',
+        accountId,
         personId,
         purpose: 'clinical_conversation',
-        actorType: 'agent',
-        actorId: 'agent-1',
+        actorType: 'patient',
+        actorId: personId,
       }),
-    ).rejects.toThrow(HealthContextAccessError)
+    ).rejects.toThrow(
+      'Person account membership is not active.',
+    )
+
+    expect(repository.getHealthContextItems).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unauthorized actor before reading health data', async () => {
+    const repository = createRepository()
+    const authorizationPolicy = createAuthorizationPolicy(false)
+
+    const service = new HealthContextService(
+      repository,
+      new HealthContextAccessPolicy(),
+      authorizationPolicy,
+    )
+
+    await expect(
+      service.getContext({
+        accountId,
+        personId,
+        purpose: 'clinical_conversation',
+        actorType: 'caregiver',
+        actorId: 'caregiver-1',
+      }),
+    ).rejects.toThrow(
+      'Actor is not authorized to access this person health context for the requested purpose.',
+    )
+
+    expect(authorizationPolicy.isAuthorized).toHaveBeenCalledWith({
+      accountId,
+      personId,
+      actorType: 'caregiver',
+      actorId: 'caregiver-1',
+      purpose: 'clinical_conversation',
+    })
 
     expect(repository.getHealthContextItems).not.toHaveBeenCalled()
   })
