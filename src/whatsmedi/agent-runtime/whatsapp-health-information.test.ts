@@ -63,6 +63,8 @@ describe('runWhatsMediHealthInformation', () => {
       db,
       accountId: 'account-123',
       personId: 'person-123',
+      actorType: 'patient',
+      actorId: 'person-123',
       message: 'Please explain my health information.',
       correlationId: 'corr-123',
     })
@@ -85,3 +87,4 @@ describe('runWhatsMediHealthInformation', () => {
     )
   })
 })
+

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createWhatsMediId } from '../types'
+import type { HealthContextActorType } from '../health-context/types'
 import { AgentRuntime } from './runtime'
 import { AgentCapabilityGate } from './capability-gate'
 import { InMemoryAgentAuditSink } from './audit'
@@ -16,6 +17,8 @@ export async function runWhatsMediHealthInformation(params: {
   db: SupabaseClient
   accountId: string
   personId: string
+  actorType: HealthContextActorType
+  actorId: string | null
   message: string
   correlationId: string
 }) {
@@ -43,8 +46,8 @@ export async function runWhatsMediHealthInformation(params: {
   return runtime.execute({
     accountId: params.accountId,
     personId: createWhatsMediId(params.personId),
-    actorType: 'patient',
-    actorId: createWhatsMediId(params.personId),
+    actorType: params.actorType,
+    actorId: params.actorId ? createWhatsMediId(params.actorId) : null,
     purpose: 'clinical_conversation',
     message: params.message,
     agentId: healthInformationAgent.id,
@@ -52,6 +55,7 @@ export async function runWhatsMediHealthInformation(params: {
     correlationId: params.correlationId,
   })
 }
+
 
 
 
