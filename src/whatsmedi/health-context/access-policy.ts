@@ -11,7 +11,7 @@ export interface HealthContextAccessRequest {
   personId: string
   purpose: HealthContextPurpose
   actorType: HealthContextActorType
-  actorId: string
+  actorId: string | null
 }
 
 export interface HealthContextAccessScope {

@@ -184,7 +184,7 @@ export class SupabaseHealthContextRepository
       )
     }
 
-    return ((data ?? []) as HealthRecordRow[]).map((row) =>
+    return ((data ?? []) as unknown as HealthRecordRow[]).map((row) =>
       this.toContextItem(row, domain),
     )
   }
