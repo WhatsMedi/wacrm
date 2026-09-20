@@ -1,5 +1,7 @@
 import type { HealthContext } from '../health-context/types'
 import type {
+  AgentExecutionContext,
+  AgentExecutor,
   AgentRequest,
   AgentResult,
 } from './types'
@@ -22,11 +24,13 @@ export class AgentRuntime {
     private readonly capabilityGate: AgentCapabilityGate,
     private readonly auditSink: AgentAuditSink,
     private readonly healthContextService: HealthContextReader,
+    private readonly executor: AgentExecutor,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {}
 
   async execute(request: AgentRequest): Promise<AgentResult> {
     const startedAt = this.now()
+    let healthContext: HealthContext | null = null
     const agent = this.registry.get(request.agentId)
 
     if (!agent) {
@@ -100,7 +104,7 @@ export class AgentRuntime {
 
     if (request.requestedCapability === 'health_context.read') {
       try {
-        await this.healthContextService.getContext({
+        healthContext = await this.healthContextService.getContext({
           accountId: request.accountId,
           personId: request.personId,
           purpose: request.purpose,
@@ -127,19 +131,35 @@ export class AgentRuntime {
       }
     }
 
-    return this.finish(
+    const executionContext: AgentExecutionContext = {
       request,
-      {
-        status: 'needs_input',
-        message: 'Agent execution boundary reached',
-        correlationId: request.correlationId,
-        agentId: agent.id,
-        startedAt,
-        completedAt: this.now(),
-        actions: [],
-      },
       agent,
-    )
+      healthContext,
+      startedAt,
+    }
+
+    try {
+      const result = await this.executor.execute(executionContext)
+
+      return this.finish(request, result, agent)
+    } catch (error) {
+      return this.finish(
+        request,
+        {
+          status: 'failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Agent execution failed',
+          correlationId: request.correlationId,
+          agentId: agent.id,
+          startedAt,
+          completedAt: this.now(),
+          actions: [],
+        },
+        agent,
+      )
+    }
   }
 
   private async finish(

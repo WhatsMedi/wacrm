@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentDefinition, AgentRequest } from './types'
+import type { AgentDefinition, AgentExecutionContext, AgentRequest } from './types'
 import type { PersonId } from '../identity/types'
 import { InMemoryAgentRegistry } from './registry'
 import { AgentRuntime } from './runtime'
@@ -53,6 +53,24 @@ const createRuntime = (agent?: AgentDefinition) => {
     }),
   }
 
+  let executionContext: AgentExecutionContext | null = null
+
+  const executor = {
+    execute: async (context: AgentExecutionContext) => {
+      executionContext = context
+
+      return {
+        status: 'needs_input' as const,
+        message: 'Agent execution boundary reached',
+        correlationId: context.request.correlationId,
+        agentId: context.agent.id,
+        startedAt: context.startedAt,
+        completedAt: '2026-09-20T13:00:01.000Z',
+        actions: [],
+      }
+    },
+  }
+
   let call = 0
   const timestamps = [
     '2026-09-20T13:00:00.000Z',
@@ -64,17 +82,25 @@ const createRuntime = (agent?: AgentDefinition) => {
     new AgentCapabilityGate(),
     auditSink,
     healthContextService,
+    executor,
     () => timestamps[call++] ?? timestamps[timestamps.length - 1],
   )
 
-  return { runtime, auditSink }
+  return { runtime, auditSink, getExecutionContext: () => executionContext }
 }
 
 describe('AgentRuntime', () => {
   it('reaches the execution boundary for an allowed request', async () => {
-    const { runtime, auditSink } = createRuntime(makeAgent())
+    const { runtime, auditSink, getExecutionContext } = createRuntime(makeAgent())
 
     const result = await runtime.execute(makeRequest())
+
+    expect(getExecutionContext()?.healthContext).toMatchObject({
+      accountId: 'account-1',
+      personId: 'person-1',
+      purpose: 'clinical_conversation',
+    })
+    expect(getExecutionContext()?.agent.id).toBe('test-agent')
 
     expect(result.status).toBe('needs_input')
     expect(result.agentId).toBe('test-agent')
@@ -150,7 +176,7 @@ describe('AgentRuntime', () => {
   })
 
   it('blocks an undeclared capability and audits the block', async () => {
-    const { runtime, auditSink } = createRuntime(makeAgent())
+    const { runtime, auditSink, getExecutionContext } = createRuntime(makeAgent())
 
     const result = await runtime.execute(
       makeRequest({ requestedCapability: 'appointment.create' }),
@@ -169,7 +195,7 @@ describe('AgentRuntime', () => {
   })
 
   it('preserves the request correlation id', async () => {
-    const { runtime, auditSink } = createRuntime(makeAgent())
+    const { runtime, auditSink, getExecutionContext } = createRuntime(makeAgent())
 
     const result = await runtime.execute(
       makeRequest({ correlationId: 'trace-abc-123' }),

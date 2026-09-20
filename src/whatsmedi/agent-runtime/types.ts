@@ -1,4 +1,5 @@
-﻿import type { PersonId } from '../identity/types'
+import type { HealthContext } from '../health-context/types'
+import type { PersonId } from '../identity/types'
 import type {
   HealthContextActorType,
   HealthContextPurpose,
@@ -50,7 +51,12 @@ export interface AgentRequest {
 export interface AgentExecutionContext {
   request: AgentRequest
   agent: AgentDefinition
+  healthContext: HealthContext | null
   startedAt: string
+}
+
+export interface AgentExecutor {
+  execute(context: AgentExecutionContext): Promise<AgentResult>
 }
 
 export interface AgentResult {
