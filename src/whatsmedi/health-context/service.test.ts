@@ -149,4 +149,38 @@ describe('HealthContextService', () => {
 
     expect(repository.getHealthContextItems).not.toHaveBeenCalled()
   })
-})
+
+  it('denies health-context access when the requested account does not own the person', async () => {
+    const requestedAccountId = 'account-2'
+
+    const repository = {
+      getPersonAccountMembership: vi.fn().mockResolvedValue(null),
+      getHealthContextItems: vi.fn(),
+    }
+
+    const authorizationPolicy = {
+      isAuthorized: vi.fn().mockResolvedValue(true),
+    }
+
+    const service = new HealthContextService(
+      repository as never,
+      new HealthContextAccessPolicy(),
+      authorizationPolicy as never,
+    )
+
+    await expect(
+      service.getContext({
+        accountId: requestedAccountId,
+        personId,
+        purpose: 'clinical_conversation',
+        actorType: 'patient',
+        actorId: personId,
+      }),
+    ).rejects.toThrow()
+
+    expect(
+      repository.getPersonAccountMembership,
+    ).toHaveBeenCalledWith(requestedAccountId, personId)
+
+    expect(repository.getHealthContextItems).not.toHaveBeenCalled()
+  })})
