@@ -18,6 +18,8 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
+import { IdentityService } from '@/whatsmedi/identity/service'
+import { createServiceRoleIdentityRepository } from '@/whatsmedi/identity/supabase-repository'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -40,6 +42,16 @@ function supabaseAdmin() {
     )
   }
   return _adminClient
+}
+
+let _whatsMediIdentityService: IdentityService | null = null
+function whatsMediIdentityService() {
+  if (!_whatsMediIdentityService) {
+    _whatsMediIdentityService = new IdentityService(
+      createServiceRoleIdentityRepository()
+    )
+  }
+  return _whatsMediIdentityService
 }
 
 interface WhatsAppMessage {
@@ -688,6 +700,27 @@ async function processMessage(
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
+
+  // The WACRM contact remains the source of truth for message delivery.
+  // Identity provisioning is transactional inside WhatsMedi, but an
+  // unavailable identity dependency must never cause Meta to retry or drop a
+  // valid WACRM message. A later delivery for this contact safely retries the
+  // idempotent resolver.
+  try {
+    await whatsMediIdentityService().resolveFromWacrmContact({
+      accountId,
+      wacrmContactId: contactRecord.id,
+      phone: contactRecord.phone ?? '',
+      phoneNormalized: contactRecord.phone_normalized ?? null,
+      waUserId: contactRecord.wa_user_id ?? null,
+      name: contactRecord.name ?? null,
+      source: 'whatsapp',
+    })
+  } catch {
+    // Do not include contact or identifier values in logs: they are healthcare
+    // adjacent personal data and the WACRM delivery has already succeeded.
+    console.error('[webhook] WhatsMedi identity provisioning failed')
+  }
 
   // Find or create conversation
   const convResult = await findOrCreateConversation(

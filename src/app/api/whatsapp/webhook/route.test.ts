@@ -217,6 +217,37 @@ vi.mock('@supabase/supabase-js', () => ({
     },
     rpc: (name: string, args: Record<string, unknown>) => {
       h.state.rpcCalls.push({ name, args })
+      if (name === 'resolve_whatsmedi_identity') {
+        return {
+          single: () =>
+            Promise.resolve({
+              data: {
+                person_id: 'person-1',
+                person_display_name: 'Ada',
+                person_created_at: '2026-01-01T00:00:00.000Z',
+                person_updated_at: '2026-01-01T00:00:00.000Z',
+                identity_id: 'identity-1',
+                identity_account_id: 'acc-1',
+                identity_person_id: 'person-1',
+                identity_phone_number: '15551230000',
+                identity_whatsapp_user_id: null,
+                identity_status: 'active',
+                identity_source: 'whatsapp',
+                identity_created_at: '2026-01-01T00:00:00.000Z',
+                identity_updated_at: '2026-01-01T00:00:00.000Z',
+                mapping_id: 'mapping-1',
+                mapping_account_id: 'acc-1',
+                mapping_wacrm_contact_id: 'contact-1',
+                mapping_person_id: 'person-1',
+                mapping_whatsapp_identity_id: 'identity-1',
+                mapping_created_at: '2026-01-01T00:00:00.000Z',
+                mapping_updated_at: '2026-01-01T00:00:00.000Z',
+                is_new_person: false,
+              },
+              error: null,
+            }),
+        }
+      }
       return Promise.resolve({ data: null, error: null })
     },
     // Service-role Storage, used by the inbound-media mirror (#466).

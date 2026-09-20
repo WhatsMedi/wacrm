@@ -1,9 +1,6 @@
-import { createWhatsMediId } from '../types'
 import type { IdentityRepository } from './repository'
 import type {
-  Person,
   PersonId,
-  WhatsAppIdentity,
   WacrmContactMapping,
   WacrmContactInput,
   ResolvedIdentityContext,
@@ -24,7 +21,11 @@ export function normalizePhoneNumber(raw: string | null | undefined): string {
 export function normalizeWhatsAppUserId(raw: string | null | undefined): string | null {
   if (!raw) return null
   const trimmed = raw.trim()
-  return trimmed.length > 0 ? trimmed : null
+  if (!trimmed) return null
+  if (!/^[A-Za-z]{2}\.(?:ENT\.)?[A-Za-z0-9]{4,}$/.test(trimmed)) {
+    throw new Error('WhatsApp user ID must be a valid BSUID')
+  }
+  return trimmed
 }
 
 export class IdentityService {
@@ -63,140 +64,18 @@ export class IdentityService {
       )
     }
 
-    // 1. Check if mapping already exists for this exact (accountId, wacrmContactId)
-    const existingMapping = await this.repo.findMappingByWacrmContactId(
-      accountId,
-      wacrmContactId
-    )
-
-    if (existingMapping) {
-      const person = await this.repo.findPersonById(existingMapping.personId)
-      const identity = await this.repo.findWhatsAppIdentityById(
-        existingMapping.whatsappIdentityId
-      )
-
-      if (person && identity) {
-        // Opportunistically backfill missing phone or BSUID if newly supplied
-        let identityToReturn = identity
-        const patch: Partial<WhatsAppIdentity> = {}
-        if (phoneNumber && !identity.phoneNumber) {
-          patch.phoneNumber = phoneNumber
-        }
-        if (whatsappUserId && !identity.whatsappUserId) {
-          patch.whatsappUserId = whatsappUserId
-        }
-        if (Object.keys(patch).length > 0) {
-          identityToReturn = await this.repo.updateWhatsAppIdentity(
-            identity.id,
-            patch
-          )
-        }
-
-        return {
-          person,
-          whatsappIdentity: identityToReturn,
-          mapping: existingMapping,
-          isNewPerson: false,
-        }
-      }
-    }
-
-    // 2. Check if WhatsAppIdentity already exists within THIS account
-    // (Notice: find methods require accountId — zero cross-account matching)
-    let existingIdentity: WhatsAppIdentity | null = null
-
-    if (whatsappUserId) {
-      existingIdentity = await this.repo.findWhatsAppIdentityByWaUserId(
-        accountId,
-        whatsappUserId
-      )
-    }
-
-    if (!existingIdentity && phoneNumber) {
-      existingIdentity = await this.repo.findWhatsAppIdentityByPhone(
-        accountId,
-        phoneNumber
-      )
-    }
-
-    if (existingIdentity) {
-      const person = await this.repo.findPersonById(existingIdentity.personId)
-      if (!person) {
-        throw new Error(
-          `Orphaned identity: Person not found for id ${existingIdentity.personId}`
-        )
-      }
-
-      // Backfill BSUID or phone if newly discovered
-      let identityToReturn = existingIdentity
-      const patch: Partial<WhatsAppIdentity> = {}
-      if (phoneNumber && !existingIdentity.phoneNumber) {
-        patch.phoneNumber = phoneNumber
-      }
-      if (whatsappUserId && !existingIdentity.whatsappUserId) {
-        patch.whatsappUserId = whatsappUserId
-      }
-      if (Object.keys(patch).length > 0) {
-        identityToReturn = await this.repo.updateWhatsAppIdentity(
-          existingIdentity.id,
-          patch
-        )
-      }
-
-      // Create new mapping for this wacrmContactId linked to existing person & identity
-      const mappingId = createWhatsMediId(crypto.randomUUID())
-      const mapping = await this.repo.createMapping({
-        id: mappingId,
-        accountId,
-        wacrmContactId,
-        personId: person.id,
-        whatsappIdentityId: identityToReturn.id,
-      })
-
-      return {
-        person,
-        whatsappIdentity: identityToReturn,
-        mapping,
-        isNewPerson: false,
-      }
-    }
-
-    // 3. Provision new Person + new WhatsAppIdentity + new WacrmContactMapping
-    const personId = createWhatsMediId(crypto.randomUUID())
-    const person = await this.repo.createPerson({
-      id: personId,
-      displayName: input.name?.trim() || null,
-    })
-
-    const identityId = createWhatsMediId(crypto.randomUUID())
-    const whatsappIdentity = await this.repo.createWhatsAppIdentity({
-      id: identityId,
-      accountId,
-      personId: person.id,
-      phoneNumber,
-      whatsappUserId,
-      status: 'active',
-      source: input.source || 'whatsapp',
-    })
-
-    const mappingId = createWhatsMediId(crypto.randomUUID())
-    const mapping = await this.repo.createMapping({
-      id: mappingId,
+    return this.repo.resolveFromWacrmContact({
       accountId,
       wacrmContactId,
-      personId: person.id,
-      whatsappIdentityId: whatsappIdentity.id,
+      phone: phoneNumber,
+      phoneNormalized: phoneNumber,
+      waUserId: whatsappUserId,
+      name: input.name?.trim() || null,
+      source: input.source ?? 'whatsapp',
     })
-
-    return {
-      person,
-      whatsappIdentity,
-      mapping,
-      isNewPerson: true,
-    }
   }
 
-  async getPersonById(personId: PersonId): Promise<Person | null> {
+  async getPersonById(personId: PersonId) {
     return this.repo.findPersonById(personId)
   }
 

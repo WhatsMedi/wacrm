@@ -157,32 +157,22 @@ describe('IdentityService', () => {
       expect(crossLookup).toBeNull()
     })
 
-    it('links second WACRM contact within same account when phone matches existing channel identity', async () => {
-      // In same account, e.g. Contact deduplication merge or duplicate contact record:
-      // Contact 1 created
-      const first = await service.resolveFromWacrmContact({
+    it('rejects a second WACRM contact for an already mapped identity', async () => {
+      await service.resolveFromWacrmContact({
         accountId: 'acc_clinic_alpha',
         wacrmContactId: 'wacrm_cnt_001',
         phone: '+91 98765 43210',
         name: 'First Record',
       })
-      expect(first.isNewPerson).toBe(true)
 
-      // Contact 2 in SAME account arrives with same phone
-      const second = await service.resolveFromWacrmContact({
-        accountId: 'acc_clinic_alpha',
-        wacrmContactId: 'wacrm_cnt_002',
-        phone: '+91 98765 43210',
-        name: 'Second Record',
-      })
-
-      // In the same account, it reuses the channel identity and person
-      expect(second.isNewPerson).toBe(false)
-      expect(second.person.id).toBe(first.person.id)
-      expect(second.whatsappIdentity.id).toBe(first.whatsappIdentity.id)
-      // But has its own contact mapping for wacrm_cnt_002
-      expect(second.mapping.wacrmContactId).toBe('wacrm_cnt_002')
-      expect(second.mapping.id).not.toBe(first.mapping.id)
+      await expect(
+        service.resolveFromWacrmContact({
+          accountId: 'acc_clinic_alpha',
+          wacrmContactId: 'wacrm_cnt_002',
+          phone: '+91 98765 43210',
+          name: 'Second Record',
+        })
+      ).rejects.toThrow('already mapped to another WACRM contact')
     })
 
     it('handles BSUID-only contact (without phone number)', async () => {
@@ -232,6 +222,15 @@ describe('IdentityService', () => {
           waUserId: '',
         })
       ).rejects.toThrow('Contact must have either a valid phone number or WhatsApp user ID')
+
+      await expect(
+        service.resolveFromWacrmContact({
+          accountId: 'acc_1',
+          wacrmContactId: 'cnt_1',
+          phone: '',
+          waUserId: 'not-a-bsuid',
+        })
+      ).rejects.toThrow('valid BSUID')
     })
   })
 })
