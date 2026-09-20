@@ -7,6 +7,7 @@ import type {
 } from './types'
 import type { AgentRegistry } from './registry'
 import { AgentCapabilityGate } from './capability-gate'
+import { capabilityRequiresHealthContext } from './health-context-requirement'
 import type { AgentAuditSink } from './audit'
 interface HealthContextReader {
   getContext(request: {
@@ -102,7 +103,7 @@ export class AgentRuntime {
       )
     }
 
-    if (request.requestedCapability === 'health_context.read') {
+    if (capabilityRequiresHealthContext(request.requestedCapability)) {
       try {
         healthContext = await this.healthContextService.getContext({
           accountId: request.accountId,
